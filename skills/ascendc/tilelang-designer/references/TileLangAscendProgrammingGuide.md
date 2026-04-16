@@ -20,6 +20,8 @@ This guide focuses on that programming model and covers:
 ### 1.1 Programming Guidelines
 
 - Prefer `T.tile.*` APIs for compute whenever possible, and avoid scalar or element-by-element operations in hot paths.
+- Respect on-chip memory limits when choosing tile sizes: UB `192 KB`, L1 `512 KB`, L0A `64 KB`, L0B `64 KB`, and L0C `128 KB`. The total bytes allocated by `T.alloc_*` in each memory scope must not exceed the corresponding capacity.
+- On the Vector side, reduce-style ops are most reliably used in `float32`. In practice, prefer copying inputs into UB and then casting them to `float32` at the beginning of `T.Scope("V")`, so the subsequent vector compute path stays in `float32`.
 
 ## 2. Basic Structure
 
