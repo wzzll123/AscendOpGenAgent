@@ -283,7 +283,10 @@ def _run_verification(op: str):
         input_groups = _get_input_groups(ref_module)
         device = _get_device()
 
+        torch.manual_seed(0)
         ref_model = ref_cls(*_clone_value(init_inputs)).to(device).eval()
+        
+        torch.manual_seed(0)
         cand_model = cand_cls(*_clone_value(init_inputs)).to(device).eval()
         all_ok = True
         comparisons = []
