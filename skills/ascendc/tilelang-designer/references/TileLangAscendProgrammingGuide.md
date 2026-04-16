@@ -20,7 +20,6 @@ This guide focuses on that programming model and covers:
 ### 1.1 Programming Guidelines
 
 - Prefer `T.tile.*` APIs for compute whenever possible, and avoid scalar or element-by-element operations in hot paths.
-- Use `T.tile.broadcast` sparingly because it can consume large UB temporary space, and prefer row-wise or column-wise tile compute patterns when UB is constrained.
 
 ## 2. Basic Structure
 
@@ -248,8 +247,8 @@ T.mma(
 | ReLU | `T.tile.relu(dst, src0)` | elementwise ReLU, `dst = max(0, src0)` |
 | Leaky ReLU | `T.tile.leaky_relu(dst, src0, scalar)` | elementwise Leaky ReLU, `dst = src0 if src0 >= 0 else src0 * scalar` |
 | AXPY | `T.tile.axpy(dst, src0, scalar)` | fused axpy, `dst = scalar * src0 + dst` |
-| Sine | `T.tile.sin(dst, src0, tmp)` | elementwise sine, `dst = sin(src0)` |
-| Cosine | `T.tile.cos(dst, src0, tmp)` | elementwise cosine, `dst = cos(src0)` |
+| Sine | `T.tile.sin(dst, src0)` | elementwise sine, `dst = sin(src0)` |
+| Cosine | `T.tile.cos(dst, src0)` | elementwise cosine, `dst = cos(src0)` |
 | Bitwise AND | `T.tile.bitwise_and(dst, src0, src1)` | elementwise bitwise AND, `dst = src0 & src1` |
 | Bitwise OR | `T.tile.bitwise_or(dst, src0, src1)` | elementwise bitwise OR, `dst = src0 \| src1` |
 | Bitwise NOT | `T.tile.bitwise_not(dst, src0)` | elementwise bitwise NOT, `dst = ~src0` |
@@ -414,28 +413,30 @@ T.tile.arith_progression(sort_indices, 0, 1, block_N)
 
 ### 6.5 Sort and Gather
 
-#### `T.tile.sort(dst, src, indices, tmp_buffer, repeat_time)`
+#### `T.tile.sort(dst, src, actual_num)`
 
-Sorts values in descending order and writes original indices to `indices`.
+Sorts values in descending order. The output buffer stores value-index pairs.
 
 ```python
-T.tile.sort(dst, src, indices, tmp_buffer, repeat_time)
+T.tile.sort(dst, src, actual_num)
 ```
 
-#### `T.tile.merge_sort(dst, src, block_size, block_num, is_copy)`
+#### `T.tile.merge_sort(dst, src0, src1, src2=None, src3=None)`
 
-Merges up to four already-sorted queues into one queue.
+Merges two to four already-sorted queues into one queue.
 
 ```python
-T.tile.merge_sort(dst, src, block_size, block_num, 0)
+T.tile.merge_sort(merge_dst, src0, src1)
+T.tile.merge_sort(merge_dst, src0, src1, src2)
+T.tile.merge_sort(merge_dst, src0, src1, src2, src3)
 ```
 
-#### `T.tile.topk(dst, src, tmp_buffer, block_size)`
+#### `T.tile.topk(dst, src, K, actual_num)`
 
-Gets top-k values or indices from the last dimension.
+Gets top-k results from the input buffer. The output buffer stores value-index pairs.
 
 ```python
-T.tile.topk(topk_global, sort_result, sort_temp, top_k)
+T.tile.topk(topk_global, sort_result, K, actual_num)
 ```
 
 #### `T.tile.gather(dst, src, src_offset, src_base_addr)`
@@ -448,45 +449,38 @@ T.tile.gather(c_ub, a_ub, b_ub, 0)
 
 ### 6.6 Broadcast
 
-#### `T.tile.broadcast(dst, src, tmp)`
+#### `T.tile.broadcast(dst, src)`
 
-Broadcast requires additional UB and is prone to errors. Although it can be faster, please avoid using it unless you are specifically optimizing for performance.
+Broadcast can still consume substantial UB space after expansion and is prone to misuse. Prefer row-wise or column-wise compute patterns unless you specifically need broadcast for performance.
 
 The source and destination must have the same number of dimensions.
 
 ```python
 a_ub = T.alloc_ub((1, N), dtype)
 b_ub = T.alloc_ub((sub_block_M, N), dtype)
-tmp = T.alloc_ub((2 * sub_block_M, N), "uint8")
-T.tile.broadcast(b_ub, a_ub, tmp)
+T.tile.broadcast(b_ub, a_ub)
 ```
 
 ### 6.7 Reduce
 
-#### `T.reduce_sum(buffer, out, tmp, dim)`
+#### `T.reduce_sum(buffer, out, dim)`
 
-Reduce temporary buffer requirements (`T.reduce_sum`, `T.reduce_max`, `T.reduce_min`):
-
-- `tmp` must be allocated in UB with dtype `uint8`.
-- `tmp` size must be `2x` of `buffer` element count.
+Reduces `buffer` along `dim` and writes the accumulated result to `out`.
 
 ```python
-tmp_ub = T.alloc_ub((2 * buffer_size,), "uint8")
-T.reduce_sum(sum_square_ub, rms_ub, tmp_ub, dim=-1)
+T.reduce_sum(sum_square_ub, rms_ub, dim=-1)
 ```
 
-#### `T.reduce_max(buffer, out, tmp, dim)`
+#### `T.reduce_max(buffer, out, dim)`
 
 ```python
-tmp_ub = T.alloc_ub((2 * buffer_size,), "uint8")
-T.reduce_max(a, tile_max, tmp_ub, dim=-1)
+T.reduce_max(a, tile_max, dim=-1)
 ```
 
-#### `T.reduce_min(buffer, out, tmp, dim)`
+#### `T.reduce_min(buffer, out, dim)`
 
 ```python
-tmp_ub = T.alloc_ub((2 * buffer_size,), "uint8")
-T.reduce_min(a_ub, b_ub, tmp_ub, dim=-1)
+T.reduce_min(a_ub, b_ub, dim=-1)
 ```
 
 ## 7. Scope and Synchronization

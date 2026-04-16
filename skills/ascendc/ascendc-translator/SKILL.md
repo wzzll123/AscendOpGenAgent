@@ -59,6 +59,7 @@ argument-hint: >
    将 `{output_dir}/design/tile_level/` 下的 TileLang 设计转译为对应的 AscendC 实现，在 `{output_dir}/kernel/` 中生成 AscendC kernel 文件。
    参考文档：`@references/dsl2Ascendc.md`
    **实施转译前必须先阅读 `@references/TileLang-AscendC-API-Mapping.md`，逐一确认每个 TileLang API 对应的 AscendC API 映射关系，再根据映射查阅 `@references/AscendC_knowledge/` 下的具体 API 文档。禁止跳过 Mapping 直接编写 AscendC 代码。**
+   **遇到 TileLang `reduce` / `broadcast` 等“上层无 tmp、下层 AscendC 需要 tmp/workBuf”的 API 时，必须按 `@references/dsl2Ascendc.md` 中的 tmp 申请策略显式分配 UB 临时 buffer；优先采用 `archive_tasks/rms_norm/kernel` 同款的保守方案。**
 2. `AscendC 验证`
    编写 `{output_dir}/model_new_ascendc.py`，并调用 `@references/evaluate_ascendc.sh {output_dir}` 验证 AscendC；如果结果不正确，继续迭代修改直到通过验证。迭代次数上限为 3 次，若 3 次迭代后仍未通过验证，停止迭代并报告当前状态。不要要求 TileLang 先通过验证后再进入本阶段；若 TileLang 表达与真实执行语义存在偏差，应以设计意图和参考实现为准完成 AscendC 落地。
    参考文档：`@references/AscendCVerification.md`

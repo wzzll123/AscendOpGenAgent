@@ -96,6 +96,21 @@ TileLang 中有多少个 `T.prim_func`，AscendC 侧就至少要有多少个独�
 - 纯 Cube 算子：`@references/dsl2Ascendc_compute_cube.md`
 - C/V 融合算子：先看 `@references/dsl2Ascendc_compute_cv.md`，再结合 `@references/dsl2Ascendc_compute_cube.md` 和 `@references/dsl2Ascendc_compute_vector.md`
 
+### UB tmp / workBuf 规则
+
+TileLang `T.reduce_*`、`T.tile.broadcast` 在 DSL 层不显式传 `tmp`，但 AscendC 底层 API 往往仍需要 UB `tmp` / `workBuf`。转译时不要照抄 TileLang 签名省略临时 buffer。
+
+- 默认用 `AscendC::TBuf<AscendC::TPosition::VECCALC>` 申请，并在使用时取成 `AscendC::LocalTensor<uint8_t>` 或对应 dtype。
+- 初次转译优先用保守方案，不要让 `reduce`、`broadcast`、cast buffer 和输入输出 queue 过早复用同一块 UB。
+- 对 shape-based `Broadcast` / `Reduce`，优先按 `2 * logical_tile_elems * sizeof(uint8_t)` 申请。
+- 对 count-based `ReduceSum(dst, src, workBuf, count)`，优先按 `count * sizeof(acc_dtype)` 申请；`float` accumulate 时通常是 `count * sizeof(float)`。
+- 同一阶段若同时有 broadcast 和 reduce，默认分别申请独立 tmp。
+
+参考 `archive_tasks/rms_norm/kernel`：
+
+- `rms_norm_merge_n_kernel.h` 中 `gammaBroadcastTmpBuf_`、`scaleBroadcastTmpBuf_`、`reduceBuf_` 都按 `2 * tile_elems * sizeof(uint8_t)` 申请。
+- `rms_norm_splitd_kernel.h` 中 `reduceBuf_` 按 `count * sizeof(float)` 申请，`tempBuf_` 单独保存 `x * x` 中间结果。
+
 **常见陷阱速查表**：
 
 | 问题 | 症状 | 解决方法 |
