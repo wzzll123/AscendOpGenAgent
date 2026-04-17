@@ -377,6 +377,17 @@ T.tile.cast(c_scale, c_ub, mode="CAST_NONE", count=block_M_2 * block_N)
 T.tile.cast(c_out, c_scale, mode="CAST_RINT", count=block_M_2 * block_N)
 ```
 
+Practical note:
+
+- `float32 -> int8` should use staged cast, e.g. `float32 -> float16 -> int8`. Do not cast `float32 -> int8` directly.
+
+Recommended:
+
+```python
+T.tile.cast(tmp_fp16, src_fp32, mode="CAST_NONE", count=elem_count)
+T.tile.cast(dst_int8, tmp_fp16, mode="CAST_NONE", count=elem_count)
+```
+
 #### `T.tile.transpose(dst, src)`
 
 Data transform API. Current upstream documentation notes support for `16 x 16` 2D matrix-tile transpose.
